@@ -1,32 +1,35 @@
-# %matplotlib inline
+# +
 from bs4 import BeautifulSoup
 import requests
+
 import pandas as pd
-from datetime import datetime
-import numpy as np
+from math import ceil
+import numpy as npfrom datetime import datetime
+
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
-from matplotlib.offsetbox import (OffsetImage, AnnotationBbox)
-from math import ceil
-
-# ## General Functions
-
-# +
-MELT_COLS = ['year', 'gender', 'team', 'opponent', 'playerNum', 'playerName', 'isMale']
-
-REQUEST_HEADER={'User-Agent':'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2227.0 Safari/537.36'}
+# %matplotlib inline
 # -
+
+# ## General
+
+MELT_COLS = ['year', 'gender', 'team', 'opponent', 'playerNum', 'playerName', 'isMale']
+REQUEST_HEADER = {'User-Agent':'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2227.0 Safari/537.36'}
 
 # ## Polish Leagues
 
+# +
 HEADERS = ['year', 'gender', 'team', 'opponent', 'setsPlayed', 'totalPts', 
            'serveTotal', 'servePts', 'serveErrors', 'servePtsPerSet', 
            'recTotal', 'recErrors', 'recPoor', 'recPerfect', 'recPerfectPer',
            'atkTotal', 'atkErrors', 'atkBlocked', 'atkPts', 'atkPtsPer',
            'blkPts', 'blkPtsPerSet']
-YEARS = [str(year) for year in range(2008, datetime.now().year + 1)]
-POL_LEAGUES = {'plusliga', 'tauronliga'}
 
+POL_LEAGUES = {'plusliga', 'tauronliga'}
+YEARS = [str(year) for year in range(2008, datetime.now().year + 1)]
+
+
+# -
 
 def get_team_data(team_id: str, year: str, league: str='plusliga'):
     gender = 'male' if league == 'plusliga' else 'female'
@@ -86,7 +89,7 @@ def get_team_ids_from_szn(league: str, year: str):
 
 league_ids = get_all_team_ids(POL_LEAGUES)
 
-team_data = []
+pol_team_data = []
 for league, ids in league_ids.items():
     tot = len(ids)
     count = 0
@@ -95,37 +98,39 @@ for league, ids in league_ids.items():
         print('team', count, '/', tot)
         for year in YEARS:
             d = get_team_data(team_id, year, league)
-            if d: team_data.append(d)
-
-df = pd.DataFrame(columns=HEADERS, data=team_data)
-
-# +
-df['isMale'] = df.gender.map({'Male': 1, 'Female': 0}).astype('int8')
+            if d: pol_team_data.append(d)
 
 
-df[['team', 'opponent', 'gender']] = df[['team', 'opponent', 'gender']].astype('string')
-df.opponent = df.opponent.str.replace(' -', '')
-df.opponent = df.apply(lambda row: row.opponent.replace(row.team, ''), axis=1)
+def clean_pol_df(df):
+    df['isMale'] = df.gender.map({'Male': 1, 'Female': 0}).astype('int8')
 
-int16_cols = ['year', 'setsPlayed']
-df[int16_cols] = df[int16_cols].astype('int16')
 
-int32_cols = ['totalPts', 'serveTotal', 'servePts', 'serveErrors',
-              'recTotal', 'recErrors', 'recPoor', 'recPerfect',
-              'atkTotal', 'atkErrors', 'atkBlocked', 'atkPts', 'blkPts']
-df[int32_cols] = df[int32_cols].astype('int32')
+    df[['team', 'opponent', 'gender']] = df[['team', 'opponent', 'gender']].astype('string')
+    df.opponent = df.opponent.str.replace(' -', '')
+    df.opponent = df.apply(lambda row: row.opponent.replace(row.team, ''), axis=1)
 
-float_cols = ['servePtsPerSet', 'recPerfectPer', 'atkPtsPer', 'blkPtsPerSet']
-for col in float_cols:
-    df[col] = df[col].str.replace(',', '.').astype(float)
+    int16_cols = ['year', 'setsPlayed']
+    df[int16_cols] = df[int16_cols].astype('int16')
+
+    int32_cols = ['totalPts', 'serveTotal', 'servePts', 'serveErrors',
+                  'recTotal', 'recErrors', 'recPoor', 'recPerfect',
+                  'atkTotal', 'atkErrors', 'atkBlocked', 'atkPts', 'blkPts']
+    df[int32_cols] = df[int32_cols].astype('int32')
+
+    float_cols = ['servePtsPerSet', 'recPerfectPer', 'atkPtsPer', 'blkPtsPerSet']
+    for col in float_cols:
+        df[col] = df[col].str.replace(',', '.').astype(float)
+
+    df[['playerName', 'playerNum']] = np.NaN
     
-df[['playerName', 'playerNum']] = np.NaN
-# -
+    return df
+
+pol_df = clean_pol_df(pd.DataFrame(columns=HEADERS, data=pol_team_data))
 
 today = datetime.today().date().strftime('%Y-%m-%d')
-df.to_csv(f'{today}_POLdata.csv', index=False)
+pol_df.to_csv(f'data/{today}_POLdata.csv', index=False)
 
-melted_pol = pd.melt(df, MELT_COLS, var_name='statistic', value_name='value')
+melted_pol = pd.melt(pol_df, MELT_COLS, var_name='statistic', value_name='value')
 
 # ## OUA
 
@@ -241,8 +246,6 @@ for league in OUA_LEAGUES:
             if count%10 == 0: print(count)
             team_data.extend(get_OUA_plyr_data(link, year_string, league))
 
-oua_df = pd.DataFrame(columns=OUA_PLYR_HEADERS, data=team_data)
-
 
 def clean_oua_df(df):
     print(df.columns)
@@ -279,10 +282,10 @@ def clean_oua_df(df):
     return df
 
 
-oua_df = clean_oua_df(oua_df)
+oua_df = clean_oua_df(pd.DataFrame(columns=OUA_PLYR_HEADERS, data=team_data))
 
 today = datetime.today().date().strftime('%Y-%m-%d')
-oua_df.to_csv(f'{today}_OUAdata.csv', index=False)
+oua_df.to_csv(f'data/{today}_OUAdata.csv', index=False)
 
 oua_df
 
@@ -293,37 +296,15 @@ melted_oua = pd.melt(oua_df, MELT_COLS, var_name='statistic', value_name='value'
 # make team total statistics
 # -
 
-# ## Combining Data
+# ## Cleaning Data
 
-all_df = pd.concat([df, oua_df])
+all_df = pd.concat([pol_df, oua_df])
 
 all_df
 
-# ## Cleaning Data
-
-# +
-male_oua_data = []
-
-league = 'mvball'
-links = {}
-for year_string in YEAR_STRINGS:
-    year_links = get_OUA_box_score_links(league, year_string)
-    print(len(year_links), 'in', league, year_string)
-    count = 0
-    for link in year_links:
-        count += 1
-        if count%10 == 0: print(count)
-        male_oua_data.extend(get_OUA_plyr_data(link, year_string, league))
-# -
-
-male_oua_df = pd.DataFrame(columns=OUA_PLYR_HEADERS, data=male_oua_data)
-male_oua_df = clean_oua_df(male_oua_df)
-
-oua_df = pd.concat([oua_df[oua_df.isMale == 0], male_oua_df])
-
 # ## Exploration
 
-# #### Most Pts
+# #### Most Pts by Team, by Gender
 
 male_oua = oua_df[oua_df.isMale == 1]
 female_oua = oua_df[oua_df.isMale == 0]
@@ -337,7 +318,7 @@ fem_sums.sort_values(ascending=False)
 # #### Top 5 Point Scorers by Team, in 2023
 
 # +
-# for div in male_oua, female_oua:
+# for df in male_oua, female_oua:
 
 df = male_oua_df
 df = df[df.year == 2023]
